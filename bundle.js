@@ -1677,6 +1677,13 @@ requestAnimationFrame(gameLoop);
 });
 
 // 启动游戏
-require('./game');
+try { require('./game'); } catch(e) {
+  var c = document.getElementById('gameCanvas');
+  var g = c.getContext('2d');
+  g.fillStyle = '#F00'; g.font = '16px monospace';
+  g.fillText('ERROR: ' + e.message, 10, 30);
+  g.fillText(e.stack ? e.stack.split('\n')[1] : '', 10, 55);
+  console.error(e);
+}
 
 })();
