@@ -128,25 +128,44 @@
 var _modules = {};
 var _cache = {};
 
+var _currentModule = '';
 function define(name, fn) { _modules[name] = fn; }
 
+function resolvePath(from, to) {
+  if (to.charAt(0) !== '.') return to;
+  // Get directory of 'from'
+  var parts = from.replace(/^\.\//, '').split('/');
+  parts.pop(); // remove filename
+  var toParts = to.split('/');
+  for (var i = 0; i < toParts.length; i++) {
+    if (toParts[i] === '..') parts.pop();
+    else if (toParts[i] !== '.') parts.push(toParts[i]);
+  }
+  return './' + parts.join('/');
+}
+
 function require(name) {
-  // 路径标准化: 去掉 ./ 前缀，尝试多种变体
-  var normalized = name.replace(/^\.\//, '');
-  var variants = [name, normalized, './' + normalized];
+  var resolved = resolvePath(_currentModule, name);
+  var normalized = resolved.replace(/^\.\//, '');
+  var variants = [resolved, normalized, './' + normalized, name];
   for (var i = 0; i < variants.length; i++) {
     var n = variants[i];
     if (_cache[n]) return _cache[n].exports;
+  }
+  for (var i = 0; i < variants.length; i++) {
+    var n = variants[i];
     if (_modules[n]) {
       var mod = { exports: {} };
       _cache[n] = mod;
-      _modules[n](mod, mod.exports, require);
-      // 也缓存其他变体
       for (var j = 0; j < variants.length; j++) _cache[variants[j]] = mod;
+      var prev = _currentModule;
+      _currentModule = n;
+      _modules[n](mod, mod.exports, require);
+      _currentModule = prev;
       return mod.exports;
     }
   }
-  console.error('Module not found: ' + name);
+  console.error('Module not found: ' + name + ' (from ' + _currentModule + ')');
   return {};
 }
 
