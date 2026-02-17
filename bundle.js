@@ -145,13 +145,25 @@ function resolvePath(from, to) {
 }
 
 function require(name) {
-  var resolved = resolvePath(_currentModule, name);
+  var resolved = _currentModule ? resolvePath(_currentModule, name) : name;
   var normalized = resolved.replace(/^\.\//, '');
-  var variants = [resolved, normalized, './' + normalized, name];
+  var variants = [resolved, normalized, './' + normalized, name, name.replace(/^\.\//, ''), './' + name.replace(/^\.\//, '')];
+  
+  // Also try matching just the basename for relative requires when _currentModule is empty
+  var basename = name.replace(/^\.\.?\//g, '').replace(/^.*\//, '');
+  
   for (var i = 0; i < variants.length; i++) {
     var n = variants[i];
     if (_cache[n]) return _cache[n].exports;
   }
+  
+  // Fuzzy match: find module ending with the required name
+  for (var key in _cache) {
+    if (_cache.hasOwnProperty(key) && key.replace(/^\.\//, '').endsWith(name.replace(/^\.\.?\//g, ''))) {
+      return _cache[key].exports;
+    }
+  }
+  
   for (var i = 0; i < variants.length; i++) {
     var n = variants[i];
     if (_modules[n]) {
@@ -165,7 +177,21 @@ function require(name) {
       return mod.exports;
     }
   }
-  console.error('Module not found: ' + name + ' (from ' + _currentModule + ')');
+  
+  // Fuzzy match modules
+  for (var key in _modules) {
+    if (_modules.hasOwnProperty(key) && key.replace(/^\.\//, '').endsWith(name.replace(/^\.\.?\//g, ''))) {
+      var mod = { exports: {} };
+      _cache[key] = mod;
+      var prev = _currentModule;
+      _currentModule = key;
+      _modules[key](mod, mod.exports, require);
+      _currentModule = prev;
+      return mod.exports;
+    }
+  }
+  
+  console.error('Module not found: ' + name + ' (from ' + _currentModule + ', resolved ' + resolved + ')');
   return {};
 }
 
@@ -1677,13 +1703,6 @@ requestAnimationFrame(gameLoop);
 });
 
 // 启动游戏
-try { require('./game'); } catch(e) {
-  var c = document.getElementById('gameCanvas');
-  var g = c.getContext('2d');
-  g.fillStyle = '#F00'; g.font = '16px monospace';
-  g.fillText('ERROR: ' + e.message, 10, 30);
-  g.fillText(e.stack ? e.stack.split('\n')[1] : '', 10, 55);
-  console.error(e);
-}
+require('./game');
 
 })();
