@@ -826,6 +826,8 @@ var _comboText = null; // { text:'', progress:0 }
 var _scorePop = null;
 var _shakeTime = 0;
 var _shakeIntensity = 0;
+var _flashAlpha = 0; // 屏幕闪白特效
+var _shockwaves = []; // 冲击波
 
 // 预览
 var _previewCells = [];
@@ -891,8 +893,10 @@ function canPlace(shape, row, col) {
 }
 
 function canPlaceAnywhere(shape) {
-  for (var r = 0; r <= GRID - shape.length; r++) {
-    for (var c = 0; c <= GRID - shape[0].length; c++) {
+  // Must check all positions including those where shape hangs over edges
+  // because some cells in the shape may be 0 (empty)
+  for (var r = -(shape.length - 1); r < GRID; r++) {
+    for (var c = -(shape[0].length - 1); c < GRID; c++) {
       if (canPlace(shape, r, c)) return true;
     }
   }
@@ -969,6 +973,12 @@ function checkAndClearLines() {
 
   if (totalLines >= 3) {
     particles.spawnMega(_boardX + _boardSize / 2, _boardY + _boardSize / 2, _theme.colors);
+    // 额外的大爆炸效果
+    for (var ei = 0; ei < totalLines; ei++) {
+      var ex = _boardX + Math.random() * _boardSize;
+      var ey = _boardY + Math.random() * _boardSize;
+      particles.spawnExplosion(ex, ey, _theme.colors[ei % _theme.colors.length]);
+    }
   }
 
   // Combo text
@@ -976,9 +986,18 @@ function checkAndClearLines() {
   _comboText = { text: totalLines >= 5 ? msgs[5] : (msgs[totalLines] || msgs[1]), progress: 0 };
   _scorePop = { text: '+' + lineScore, progress: 0 };
 
-  // Shake
+  // Shake (更强烈)
   _shakeTime = 0;
-  _shakeIntensity = totalLines >= 4 ? 16 : totalLines >= 2 ? 10 : 5;
+  _shakeIntensity = totalLines >= 4 ? 20 : totalLines >= 3 ? 14 : totalLines >= 2 ? 10 : 6;
+  
+  // 屏幕闪白 + 冲击波
+  _flashAlpha = totalLines >= 3 ? 0.5 : totalLines >= 2 ? 0.3 : 0.15;
+  for (var si = 0; si < rowsToClear.length; si++) {
+    _shockwaves.push({ x: _boardX + _boardSize / 2, y: _boardY + rowsToClear[si] * _cellSize + _cellSize / 2, r: 0, alpha: 0.6 });
+  }
+  for (var si = 0; si < colsToClear.length; si++) {
+    _shockwaves.push({ x: _boardX + colsToClear[si] * _cellSize + _cellSize / 2, y: _boardY + _boardSize / 2, r: 0, alpha: 0.6 });
+  }
 
   // Sound
   if (totalLines >= 2) sound.play('combo');
@@ -1295,6 +1314,15 @@ var gameScene = {
     if (_comboText) { _comboText.progress += dt * 0.8; if (_comboText.progress > 1) _comboText = null; }
     if (_scorePop) { _scorePop.progress += dt * 1; if (_scorePop.progress > 1) _scorePop = null; }
     if (_clearAnim) { _clearAnim.progress = Math.min(1, _clearAnim.progress + dt * 2.5); }
+    // Flash decay
+    if (_flashAlpha > 0.01) _flashAlpha *= 0.88; else _flashAlpha = 0;
+    // Shockwave update
+    for (var swi = _shockwaves.length - 1; swi >= 0; swi--) {
+      var sw = _shockwaves[swi];
+      sw.r += 300 * dt;
+      sw.alpha *= 0.92;
+      if (sw.alpha < 0.02 || sw.r > 200) _shockwaves.splice(swi, 1);
+    }
   },
 
   draw: function(ctx) {
@@ -1307,6 +1335,32 @@ var gameScene = {
     particles.update();
     drawComboText(ctx);
     drawScorePop(ctx);
+    
+    // 屏幕闪白特效
+    if (_flashAlpha > 0.01) {
+      ctx.save();
+      ctx.globalAlpha = _flashAlpha;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, _w, _h);
+      ctx.restore();
+    }
+    // 冲击波特效
+    for (var swi = 0; swi < _shockwaves.length; swi++) {
+      var sw = _shockwaves[swi];
+      ctx.save();
+      ctx.globalAlpha = sw.alpha;
+      ctx.strokeStyle = '#FFD740';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(sw.x, sw.y, sw.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = _theme.colors[swi % _theme.colors.length];
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(sw.x, sw.y, sw.r * 0.7, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // Home button
     if (!gameOver && _homeBtn) {
